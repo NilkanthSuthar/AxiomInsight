@@ -1,0 +1,51 @@
+employee_id,first_name,last_name,email,department,position,hire_date,salary,location,employment_type,manager_id
+EMP001,Sarah,Chen,sarah.chen@axiom.ca,Engineering,VP Engineering,2019-03-15,165000,Toronto,Full-Time,
+EMP002,Michael,Johnson,michael.johnson@axiom.ca,Sales,VP Sales,2019-05-20,158000,Toronto,Full-Time,
+EMP003,Priya,Sharma,priya.sharma@axiom.ca,Finance,CFO,2019-07-01,175000,Toronto,Full-Time,
+EMP004,David,Lee,david.lee@axiom.ca,Engineering,Senior Software Engineer,2020-01-10,125000,Toronto,Full-Time,EMP001
+EMP005,Emma,Wilson,emma.wilson@axiom.ca,Marketing,Marketing Manager,2020-02-14,98000,Toronto,Full-Time,
+EMP006,James,Brown,james.brown@axiom.ca,Engineering,Software Engineer,2020-03-22,95000,Toronto,Full-Time,EMP001
+EMP007,Olivia,Martinez,olivia.martinez@axiom.ca,Sales,Account Executive,2020-06-01,85000,Vancouver,Full-Time,EMP002
+EMP008,Liam,Anderson,liam.anderson@axiom.ca,Engineering,DevOps Engineer,2020-08-15,105000,Toronto,Full-Time,EMP001
+EMP009,Sophie,Taylor,sophie.taylor@axiom.ca,Customer Success,CS Manager,2020-09-10,92000,Toronto,Full-Time,
+EMP010,Noah,Thomas,noah.thomas@axiom.ca,Engineering,Data Engineer,2020-11-05,98000,Toronto,Full-Time,EMP001
+EMP011,Ava,Jackson,ava.jackson@axiom.ca,HR,HR Manager,2021-01-20,88000,Toronto,Full-Time,
+EMP012,William,White,william.white@axiom.ca,Engineering,ML Engineer,2021-02-28,115000,Montreal,Full-Time,EMP001
+EMP013,Isabella,Harris,isabella.harris@axiom.ca,Sales,Sales Development Rep,2021-04-12,72000,Toronto,Full-Time,EMP002
+EMP014,Lucas,Martin,lucas.martin@axiom.ca,Engineering,Frontend Developer,2021-05-18,92000,Vancouver,Full-Time,EMP001
+EMP015,Mia,Thompson,mia.thompson@axiom.ca,Finance,Senior Accountant,2021-06-25,85000,Toronto,Full-Time,EMP003
+EMP016,Benjamin,Garcia,benjamin.garcia@axiom.ca,Engineering,Backend Developer,2021-07-30,95000,Toronto,Full-Time,EMP001
+EMP017,Charlotte,Rodriguez,charlotte.rodriguez@axiom.ca,Marketing,Content Manager,2021-09-08,76000,Toronto,Full-Time,EMP005
+EMP018,Henry,Martinez,henry.martinez@axiom.ca,Engineering,QA Engineer,2021-10-14,82000,Toronto,Full-Time,EMP001
+EMP019,Amelia,Lopez,amelia.lopez@axiom.ca,Sales,Account Manager,2021-11-22,88000,Vancouver,Full-Time,EMP002
+EMP020,Alexander,Gonzalez,alexander.gonzalez@axiom.ca,Engineering,Software Engineer,2022-01-10,98000,Montreal,Full-Time,EMP001
+EMP021,Harper,Wilson,harper.wilson@axiom.ca,Customer Success,CS Specialist,2022-02-16,68000,Toronto,Full-Time,EMP009
+EMP022,Ethan,Anderson,ethan.anderson@axiom.ca,Engineering,Site Reliability Engineer,2022-03-21,108000,Toronto,Full-Time,EMP001
+EMP023,Evelyn,Moore,evelyn.moore@axiom.ca,Finance,Financial Analyst,2022-04-28,75000,Toronto,Full-Time,EMP003
+EMP024,Sebastian,Taylor,sebastian.taylor@axiom.ca,Engineering,Software Engineer,2022-06-06,92000,Vancouver,Full-Time,EMP001
+EMP025,Abigail,Thomas,abigail.thomas@axiom.ca,Marketing,Digital Marketing Specialist,2022-07-12,70000,Toronto,Full-Time,EMP005
+EMP026,Jack,Jackson,jack.jackson@axiom.ca,Engineering,Data Scientist,2022-08-19,112000,Toronto,Full-Time,EMP001
+EMP027,Emily,White,emily.white@axiom.ca,Sales,Sales Engineer,2022-09-26,95000,Toronto,Full-Time,EMP002
+EMP028,Daniel,Harris,daniel.harris@axiom.ca,Engineering,Software Engineer,2022-10-30,95000,Montreal,Full-Time,EMP001
+EMP029,Sofia,Martin,sofia.martin@axiom.ca,HR,HR Coordinator,2022-12-05,62000,Toronto,Full-Time,EMP011
+EMP030,Matthew,Clark,matthew.clark@axiom.ca,Engineering,Product Manager,2023-01-15,105000,Toronto,Full-Time,EMP001
+EMP031,Aria,Rodriguez,aria.rodriguez@axiom.ca,Customer Success,CS Specialist,2023-02-20,68000,Vancouver,Full-Time,EMP009
+EMP032,Jackson,Lewis,jackson.lewis@axiom.ca,Engineering,Infrastructure Engineer,2023-03-28,102000,Toronto,Full-Time,EMP001
+EMP033,Scarlett,Lee,scarlett.lee@axiom.ca,Finance,Payroll Specialist,2023-04-10,68000,Toronto,Full-Time,EMP003
+EMP034,Aiden,Walker,aiden.walker@axiom.ca,Engineering,Software Engineer,2023-05-16,92000,Toronto,Full-Time,EMP001
+EMP035,Grace,Hall,grace.hall@axiom.ca,Marketing,Marketing Coordinator,2023-06-22,65000,Toronto,Full-Time,EMP005
+EMP036,Carter,Allen,carter.allen@axiom.ca,Engineering,Security Engineer,2023-07-30,115000,Toronto,Full-Time,EMP001
+EMP037,Chloe,Young,chloe.young@axiom.ca,Sales,Account Executive,2023-08-14,82000,Montreal,Full-Time,EMP002
+EMP038,Wyatt,King,wyatt.king@axiom.ca,Engineering,Software Engineer,2023-09-18,95000,Vancouver,Full-Time,EMP001
+EMP039,Lily,Wright,lily.wright@axiom.ca,Customer Success,Implementation Specialist,2023-10-25,72000,Toronto,Full-Time,EMP009
+EMP040,Grayson,Lopez,grayson.lopez@axiom.ca,Engineering,ML Ops Engineer,2023-11-30,105000,Toronto,Full-Time,EMP001
+EMP041,Zoey,Scott,zoey.scott@axiom.ca,Finance,Controller,2024-01-08,118000,Toronto,Full-Time,EMP003
+EMP042,Luke,Green,luke.green@axiom.ca,Engineering,Senior Software Engineer,2024-02-12,125000,Montreal,Full-Time,EMP001
+EMP043,Nora,Adams,nora.adams@axiom.ca,Marketing,SEO Specialist,2024-03-19,72000,Toronto,Full-Time,EMP005
+EMP044,Julian,Baker,julian.baker@axiom.ca,Engineering,Platform Engineer,2024-04-24,98000,Toronto,Full-Time,EMP001
+EMP045,Hannah,Gonzalez,hannah.gonzalez@axiom.ca,Sales,Business Development Rep,2024-05-30,70000,Vancouver,Full-Time,EMP002
+EMP046,Lincoln,Nelson,lincoln.nelson@axiom.ca,Engineering,Software Engineer,2024-06-10,92000,Toronto,Full-Time,EMP001
+EMP047,Violet,Carter,violet.carter@axiom.ca,HR,Talent Acquisition Specialist,2024-07-15,75000,Toronto,Full-Time,EMP011
+EMP048,Maverick,Mitchell,maverick.mitchell@axiom.ca,Engineering,Data Engineer,2024-08-20,98000,Montreal,Full-Time,EMP001
+EMP049,Layla,Perez,layla.perez@axiom.ca,Customer Success,Customer Success Manager,2024-09-25,85000,Toronto,Full-Time,EMP009
+EMP050,Asher,Roberts,asher.roberts@axiom.ca,Engineering,Software Engineer,2024-10-30,95000,Vancouver,Full-Time,EMP001
