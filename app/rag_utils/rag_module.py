@@ -1,6 +1,7 @@
 """Document indexing and the role-scoped retrieval chain."""
 
 import sqlite3
+from operator import itemgetter
 from pathlib import Path
 
 import pandas as pd
@@ -9,7 +10,7 @@ from langchain_cohere import CohereRerank
 from langchain_core.documents import Document
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.runnables import RunnableParallel, RunnablePassthrough
+from langchain_core.runnables import RunnableParallel
 from langchain_core.vectorstores import VectorStore
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -213,10 +214,14 @@ def get_rag_chain(user_role: str, cohere_api_key: str = None):
     cohere_api_key = cohere_api_key or config.COHERE_API_KEY
     retriever = get_retriever(user_role, cohere_api_key)
 
+    # itemgetter, not RunnablePassthrough: the chain is invoked with
+    # {"input": question}, and passing that dict straight through meant the
+    # retriever embedded the dict's repr and the prompt's {input} rendered as
+    # "{'input': '...'}" instead of the question itself.
     chain = (
         RunnableParallel(
-            context=retriever | format_docs,
-            input=RunnablePassthrough(),
+            context=itemgetter("input") | retriever | format_docs,
+            input=itemgetter("input"),
         )
         | chat_prompt
         | get_model()

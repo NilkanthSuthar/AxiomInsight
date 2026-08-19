@@ -106,3 +106,28 @@ def test_rerank_tag_flips_when_cohere_configured(store):
 
     assert "rerank:on" in chain.first.config["tags"]
     assert chain.first.config["metadata"]["reranked"] is True
+
+
+def test_prompt_receives_the_question_not_the_input_dict(store):
+    """The chain is invoked with {"input": question}.
+
+    Passing that dict straight through meant the retriever embedded the dict's
+    repr and the prompt rendered "{'input': '...'}" instead of the question.
+    """
+    from langchain_core.runnables import RunnableLambda
+
+    captured = {}
+
+    def capture(prompt_value):
+        captured["text"] = prompt_value.to_string()
+        return "answer"
+
+    with patch.object(rag_module, "get_vectorstore", return_value=store):
+        with patch.object(rag_module, "get_model", return_value=RunnableLambda(capture)):
+            rag_module.get_rag_chain("Finance", cohere_api_key=None).invoke(
+                {"input": "what was the gross margin"}
+            )
+
+    human = [l for l in captured["text"].splitlines() if l.startswith("Human:")][0]
+    assert human == "Human: what was the gross margin"
+    assert "{'input'" not in captured["text"]

@@ -61,12 +61,30 @@ def extract_tables_from_sql(sql: str) -> list[str]:
     return [item for tup in matches for item in tup if item]
 
 
-FORBIDDEN = ["insert", "update", "delete", "drop", "alter", "create", "attach", "copy"]
+FORBIDDEN = [
+    "insert", "update", "delete", "drop", "alter", "create",
+    "attach", "copy", "truncate", "replace", "grant", "pragma",
+]
+
+# Matched on word boundaries. A plain substring test rejected legitimate
+# queries: "created_at" contains "create", "updated_at" contains "update".
+_FORBIDDEN_RE = re.compile(r"\b(" + "|".join(FORBIDDEN) + r")\b", re.IGNORECASE)
 
 
 def is_safe_query(sql: str) -> bool:
-    lowered = sql.strip().lower().rstrip(";")
-    return lowered.startswith("select") and all(w not in lowered for w in FORBIDDEN)
+    """Allow a single read-only SELECT and nothing else.
+
+    A keyword guard, not a parser: it is a prototype control, not a security
+    boundary. The role's table allowlist is the check that actually contains
+    access.
+    """
+    stripped = sql.strip().rstrip(";").strip()
+    if not stripped.lower().startswith("select"):
+        return False
+    # Reject stacked statements: "SELECT 1; DROP TABLE x" must not pass.
+    if ";" in stripped:
+        return False
+    return _FORBIDDEN_RE.search(stripped) is None
 
 
 def build_schema_block(allowed_tables: list[str]) -> str:

@@ -150,3 +150,30 @@ async def test_role_with_no_tables_is_told_so(wired, monkeypatch):
     monkeypatch.setattr(csv_query, "get_allowed_tables_for_role", lambda r: [])
     result = await csv_query.ask_csv("anything", "Ghost", "ghost")
     assert result["error"] is True
+
+
+# --- the guard must not reject legitimate queries --------------------------
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "SELECT created_at FROM hr_data",      # 'create' is a substring
+        "SELECT updated_at, salary FROM hr_data",  # 'update' is a substring
+        "SELECT date_created FROM hr_data",
+        "SELECT * FROM hr_data WHERE position = 'Creative Director'",
+    ],
+)
+def test_guard_allows_columns_that_merely_contain_keywords(sql):
+    """A plain substring test rejected these. Keywords match on word
+    boundaries so 'created_at' is not read as CREATE."""
+    assert csv_query.is_safe_query(sql) is True
+
+
+def test_stacked_statements_are_rejected():
+    assert csv_query.is_safe_query("SELECT 1; DROP TABLE hr_data") is False
+
+
+def test_guard_is_conservative_about_keywords_in_string_literals():
+    """Documented limitation: the guard is keyword-based, not a parser, so a
+    literal containing a keyword is refused. Rejecting a valid query is the
+    safe direction to be wrong in."""
+    assert csv_query.is_safe_query("SELECT * FROM t WHERE note = 'create'") is False
