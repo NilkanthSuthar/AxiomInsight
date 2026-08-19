@@ -1,19 +1,41 @@
-streamlit
-fastapi
-uvicorn
-openai
-langchain
-chromadb
-sqlite3  # builtin
-passlib[bcrypt]
-pandas
-python-dotenv
-requests
-cohere
-duckdb
-tabulate
-pydantic
-python-dotenv
-pytest
-playwright
-pytest-playwright
+# Pinned to the versions this project was last verified against.
+# Python 3.11+
+
+# --- Web layer ---
+fastapi==0.141.1
+uvicorn[standard]==0.52.3
+python-multipart==0.0.32       # required by FastAPI for Form/File uploads
+streamlit==1.61.1
+requests==2.34.2
+
+# --- LLM orchestration ---
+# Held on the LangChain 0.3 line: 1.x relocates ContextualCompressionRetriever
+# into a compatibility shim and sunsets langchain-community.
+langchain==0.3.30
+langchain-core==0.3.86
+langchain-community==0.3.31
+langchain-text-splitters==0.3.11
+langchain-openai==0.3.35
+langchain-chroma==0.2.6
+langchain-cohere==0.4.6
+
+# --- Model providers ---
+openai==2.54.0
+cohere==5.21.1
+
+# --- Storage ---
+chromadb==1.5.9
+duckdb==1.5.5
+# NOTE: sqlite3 is part of the Python standard library. It was previously
+# listed here, which made `pip install -r requirements.txt` fail outright.
+
+# --- Data handling ---
+pandas==3.0.5
+tabulate==0.10.0
+
+# --- Auth & config ---
+bcrypt==5.0.0
+python-dotenv==1.2.3
+
+# --- Tests ---
+pytest==9.1.1
