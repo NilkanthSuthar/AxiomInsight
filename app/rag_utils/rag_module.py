@@ -181,16 +181,21 @@ def wrap_with_reranker(retriever, cohere_api_key: str, top_n: int = None):
     )
 
 
-def get_retriever(user_role: str, cohere_api_key: str = None):
-    """Role-scoped retriever, reranked when a Cohere key is configured."""
+def get_retriever(user_role: str, cohere_api_key: str = None, k: int = None):
+    """Role-scoped retriever, reranked when a Cohere key is configured.
+
+    `k` is how many documents the caller wants back; it defaults to
+    config.RETRIEVAL_K. Evaluation passes it explicitly to sweep k.
+    """
     cohere_api_key = cohere_api_key or config.COHERE_API_KEY
+    top_n = k or config.RETRIEVAL_K
     role_filter = build_role_filter(user_role)
 
     # Pull a wider candidate set when reranking, so the reranker has something
     # to choose between; otherwise fetch exactly what we intend to use.
-    k = config.RERANK_CANDIDATES if cohere_api_key else config.RETRIEVAL_K
+    fetch_k = max(config.RERANK_CANDIDATES, top_n) if cohere_api_key else top_n
 
-    search_kwargs = {"k": k}
+    search_kwargs = {"k": fetch_k}
     if role_filter is not None:
         search_kwargs["filter"] = role_filter
 
@@ -199,7 +204,7 @@ def get_retriever(user_role: str, cohere_api_key: str = None):
     )
 
     if cohere_api_key:
-        retriever = wrap_with_reranker(retriever, cohere_api_key)
+        retriever = wrap_with_reranker(retriever, cohere_api_key, top_n=top_n)
 
     return retriever
 

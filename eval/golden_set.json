@@ -1,0 +1,36 @@
+{
+  "description": "Hand-written retrieval evaluation set. Each question has exactly one relevant source document, verified to contain the answer. Questions are grouped so that several in each department can only be answered by one of two similar documents (annual vs quarterly), which is where reranking is expected to matter most.",
+  "relevance": "One relevant document per question. Recall@k therefore equals hit-rate@k.",
+  "questions": [
+    {"question": "What is the probationary period for new employees?", "relevant_source": "employee_handbook.md", "role": "General"},
+    {"question": "How much does the employer match on RRSP contributions?", "relevant_source": "employee_handbook.md", "role": "General"},
+    {"question": "How many days per week may employees work remotely?", "relevant_source": "employee_handbook.md", "role": "General"},
+    {"question": "What is the monthly phone and internet reimbursement for remote workers?", "relevant_source": "employee_handbook.md", "role": "General"},
+    {"question": "When does the vacation year start and end?", "relevant_source": "employee_handbook.md", "role": "General"},
+
+    {"question": "What was the gross margin for the full year 2024?", "relevant_source": "financial_summary.md", "role": "Finance"},
+    {"question": "How much was received in SR&ED tax credits?", "relevant_source": "financial_summary.md", "role": "Finance"},
+    {"question": "What was net income for the 2024 financial year?", "relevant_source": "financial_summary.md", "role": "Finance"},
+    {"question": "What were total operating expenses for the year?", "relevant_source": "financial_summary.md", "role": "Finance"},
+    {"question": "What was operating cash flow in the fourth quarter?", "relevant_source": "quarterly_financial_report.md", "role": "Finance"},
+    {"question": "How much Q4 revenue came from Ontario?", "relevant_source": "quarterly_financial_report.md", "role": "Finance"},
+    {"question": "What was the Q4 revenue split by province?", "relevant_source": "quarterly_financial_report.md", "role": "Finance"},
+
+    {"question": "What was aided brand awareness in 2024?", "relevant_source": "marketing_annual_report_2024.md", "role": "Marketing"},
+    {"question": "How many marketing qualified leads were generated across the year?", "relevant_source": "marketing_annual_report_2024.md", "role": "Marketing"},
+    {"question": "What was the total annual marketing budget?", "relevant_source": "marketing_annual_report_2024.md", "role": "Marketing"},
+    {"question": "How many webinars ran in the AI Innovation series?", "relevant_source": "marketing_report_q4_2024.md", "role": "Marketing"},
+    {"question": "What was the lead-to-opportunity conversion on the Enterprise Awareness Campaign?", "relevant_source": "marketing_report_q4_2024.md", "role": "Marketing"},
+    {"question": "Which two cities were targeted by the Q4 enterprise campaigns?", "relevant_source": "marketing_report_q4_2024.md", "role": "Marketing"},
+
+    {"question": "Which security compliance frameworks does the company hold?", "relevant_source": "compliance_policy.md", "role": "Compliance"},
+    {"question": "How many previous passwords cannot be reused?", "relevant_source": "compliance_policy.md", "role": "Compliance"},
+    {"question": "What are the data classification levels and their handling requirements?", "relevant_source": "compliance_policy.md", "role": "Compliance"},
+    {"question": "Who is responsible for incident response oversight?", "relevant_source": "compliance_policy.md", "role": "Compliance"},
+
+    {"question": "Which cloud regions is the platform deployed in?", "relevant_source": "engineering_master_doc.md", "role": "Engineering"},
+    {"question": "Which version of PostgreSQL is the primary transactional database?", "relevant_source": "engineering_master_doc.md", "role": "Engineering"},
+    {"question": "Which Kubernetes version is in use?", "relevant_source": "engineering_master_doc.md", "role": "Engineering"},
+    {"question": "What is the code style guide for Python?", "relevant_source": "engineering_master_doc.md", "role": "Engineering"}
+  ]
+}
