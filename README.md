@@ -212,15 +212,47 @@ a key.
 
 ---
 
+## Evaluating retrieval
+
+```bash
+python -m scripts.seed                    # index the documents first
+python -m scripts.evaluate_retrieval      # add --k 5, --show-misses, --json out.json
+```
+
+Measures **recall@k** and **MRR** over `eval/golden_set.json`, with and without
+Cohere reranking, and prints the difference between the two. The golden set is
+26 questions, each with exactly one relevant source document; the facts were
+taken from the sample documents and every label was checked against the file it
+points at. Several Finance and Marketing questions are answerable only by one of
+two similar documents (annual versus quarterly), which is where reranking has a
+chance to matter.
+
+Since there is one relevant document per question, recall@k is the hit rate at k.
+
+Reranking is only measured when `COHERE_API_KEY` is set; otherwise the script
+reports the baseline alone and says so.
+
+**No number from this script is quoted in this README.** Run it against your own
+index and the output is the result.
+
+---
+
 ## Tests
 
 ```bash
 pytest
 ```
 
-26 tests covering backend selection, the two filter dialects, role scoping
-against a real Chroma instance, and credential handling. They use a
-deterministic stub embedder, so they need no API key.
+90 tests, none of which need an API key — they use a deterministic bag-of-words
+embedder in place of OpenAI.
+
+| Area | Covers |
+|---|---|
+| Vector-store backends | selection, the two filter dialects, optional-dependency errors |
+| Role scoping (vector) | each role's visibility, and that the filter is a pre-filter |
+| Role scoping (SQL) | allowed tables, schema scoped before the prompt, cross-role refusal |
+| HTTP layer | anonymous rejection, Admin-only routes, upload validation, traversal |
+| Evaluation | metric arithmetic, golden-set integrity, pipeline invariants |
 
 ---
 
@@ -239,6 +271,10 @@ app/
     csv_query.py         NL→SQL, validation, DuckDB execution
 scripts/
   seed.py                bootstrap roles, admin user, sample documents
+  evaluate_retrieval.py  recall@k and MRR, with and without reranking
+eval/
+  golden_set.json        26 questions with their relevant source document
+  metrics.py             recall@k, MRR
 tests/                   pytest suite, no API key required
 static/uploads/          sample documents, one directory per role
 ```
