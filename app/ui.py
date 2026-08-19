@@ -18,116 +18,116 @@ def set_background():
     }
     
     /* Ensure text is readable */
-    .stApp, .stApp label, .stApp p, .stApp span, .stApp div {{
+    .stApp, .stApp label, .stApp p, .stApp span, .stApp div {
         color: #1a1a1a !important;
-    }}
+    }
     
     /* Input fields */
-    .stTextInput input, .stSelectbox select, .stTextArea textarea {{
+    .stTextInput input, .stSelectbox select, .stTextArea textarea {
         background-color: white !important;
         color: #1a1a1a !important;
-    }}
+    }
     
     /* Placeholder text */
-    .stTextInput input::placeholder, .stTextArea textarea::placeholder {{
+    .stTextInput input::placeholder, .stTextArea textarea::placeholder {
         color: #666666 !important;
         opacity: 1 !important;
-    }}
+    }
     
-    .stTextInput input::-webkit-input-placeholder, .stTextArea textarea::-webkit-input-placeholder {{
+    .stTextInput input::-webkit-input-placeholder, .stTextArea textarea::-webkit-input-placeholder {
         color: #666666 !important;
         opacity: 1 !important;
-    }}
+    }
     
-    .stTextInput input::-moz-placeholder, .stTextArea textarea::-moz-placeholder {{
+    .stTextInput input::-moz-placeholder, .stTextArea textarea::-moz-placeholder {
         color: #666666 !important;
         opacity: 1 !important;
-    }}
+    }
     
     /* Selectbox specific fixes */
-    .stSelectbox label, .stSelectbox > div > div {{
+    .stSelectbox label, .stSelectbox > div > div {
         color: #1a1a1a !important;
-    }}
+    }
     
-    .stSelectbox [data-baseweb="select"] {{
+    .stSelectbox [data-baseweb="select"] {
         background-color: white !important;
-    }}
+    }
     
-    .stSelectbox [data-baseweb="select"] > div {{
+    .stSelectbox [data-baseweb="select"] > div {
         background-color: white !important;
         color: #1a1a1a !important;
-    }}
+    }
     
     /* Selectbox dropdown menu */
-    .stSelectbox [role="listbox"], .stSelectbox [data-baseweb="popover"] {{
+    .stSelectbox [role="listbox"], .stSelectbox [data-baseweb="popover"] {
         background-color: white !important;
-    }}
+    }
     
-    .stSelectbox [role="option"] {{
+    .stSelectbox [role="option"] {
         background-color: white !important;
         color: #1a1a1a !important;
-    }}
+    }
     
-    .stSelectbox [role="option"]:hover {{
+    .stSelectbox [role="option"]:hover {
         background-color: #e6f2ff !important;
         color: #1a1a1a !important;
-    }}
+    }
     
     /* File uploader */
-    .stFileUploader label, .stFileUploader section, .stFileUploader small {{
+    .stFileUploader label, .stFileUploader section, .stFileUploader small {
         color: #1a1a1a !important;
-    }}
+    }
     
-    .stFileUploader [data-testid="stFileUploaderDropzone"] {{
+    .stFileUploader [data-testid="stFileUploaderDropzone"] {
         background-color: rgba(255, 255, 255, 0.9) !important;
-    }}
+    }
     
-    .stFileUploader button {{
+    .stFileUploader button {
         background-color: white !important;
         color: #1a1a1a !important;
         border: 2px solid #0066cc !important;
-    }}
+    }
     
-    .stFileUploader button:hover {{
+    .stFileUploader button:hover {
         background-color: #e6f2ff !important;
-    }}
+    }
     
     /* Buttons */
-    .stButton button {{
+    .stButton button {
         background-color: #0066cc !important;
         color: white !important;
-    }}
+    }
     
     /* Headings */
-    h1, h2, h3, h4, h5, h6 {{
+    h1, h2, h3, h4, h5, h6 {
         color: #1a1a1a !important;
-    }}
+    }
     
     /* Markdown content */
-    .stMarkdown {{
+    .stMarkdown {
         color: #1a1a1a !important;
-    }}
+    }
     
     /* Info boxes */
-    .stAlert {{
+    .stAlert {
         color: #1a1a1a !important;
-    }}
+    }
     
     /* Expander */
-    .streamlit-expanderHeader, .streamlit-expanderContent {{
+    .streamlit-expanderHeader, .streamlit-expanderContent {
         color: #1a1a1a !important;
-    }}
+    }
     
     /* Code blocks */
-    .stCode, pre, code {{
+    .stCode, pre, code {
         background-color: #f5f5f5 !important;
         color: #1a1a1a !important;
-    }}
+    }
     
     /* Expander background */
-    [data-testid="stExpander"] {{
+    [data-testid="stExpander"] {
         background-color: rgba(255, 255, 255, 0.9) !important;
-    }}
+    }
     </style>
     """
     st.markdown(css, unsafe_allow_html=True)
@@ -187,25 +187,31 @@ if st.session_state.page == "login":
                     st.error("Please enter both username and password")
                 else:
                     with st.spinner("Authenticating..."):
-                        res = requests.get(f"{API_URL}/login", auth=HTTPBasicAuth(username, password))
-                        if res.status_code == 200:
-                            st.session_state.auth = (username, password)
-                            st.session_state.username = username
-                            st.session_state.password = password
-                            st.session_state.role = res.json()["role"]
-                        
-                            # Fetch roles once login is successful
-                            st.session_state.roles = fetch_roles()
+                        try:
+                            res = requests.get(
+                                f"{API_URL}/login",
+                                auth=HTTPBasicAuth(username, password),
+                                timeout=10,
+                            )
+                        except requests.RequestException:
+                            st.error(
+                                f"Cannot reach the API at {API_URL}. Start it with:  "
+                                "uvicorn app.main:app --port 8000"
+                            )
+                            st.stop()
 
-                            st.session_state.page = "main"  # Navigate to main app
-                            st.success("Login successful!")
-                            st.rerun()
-                        else:
-                            try:
-                                st.error(f"{res.json().get('detail', 'Login failed.')}")
-                            except:
-                                st.error("Server error. Please check FastAPI logs.")
-
+                    if res.status_code == 200:
+                        st.session_state.auth = (username, password)
+                        st.session_state.username = username
+                        st.session_state.role = res.json()["role"]
+                        st.session_state.roles = fetch_roles()
+                        st.session_state.page = "main"
+                        st.rerun()
+                    else:
+                        try:
+                            st.error(res.json().get("detail", "Login failed."))
+                        except Exception:
+                            st.error("Server error. Please check the API logs.")
 
 
 # -------------------------
@@ -288,7 +294,7 @@ if st.session_state.page == "main":
                     try:
                         res = requests.post(
                             f"{API_URL}/chat",
-                            json={"question": question, "role": st.session_state.role},
+                            json={"question": question},
                             auth=HTTPBasicAuth(*st.session_state.auth),
                             timeout=30
                         )
@@ -333,7 +339,9 @@ if st.session_state.page == "main":
             st.subheader("Upload Documents")
             st.info("Upload .md or .csv files to make them available for queries")
             
-            roles = st.session_state.roles
+            roles = st.session_state.get("roles", [])
+            if not roles:
+                st.warning("No roles loaded. Is the API running?")
             selected_role = st.selectbox("Select Document Access Role", roles, help="Choose which role can access this document")
             doc_file = st.file_uploader("Upload Document (.md or .csv)", type=["csv", "md"])
 
