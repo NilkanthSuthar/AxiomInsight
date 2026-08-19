@@ -75,6 +75,40 @@ with `SELECT` and contains no DDL/DML keywords.
 
 ---
 
+## Vector store backends
+
+Retrieval goes through a `VectorStoreBackend` interface rather than talking to
+a store directly, selected with one environment variable:
+
+```bash
+VECTOR_STORE=chroma      # default
+VECTOR_STORE=pinecone
+```
+
+The interface exists because the two stores disagree on more than construction:
+each has its own metadata-filter dialect. Chroma accepts a bare equality map for
+a single condition; Pinecone wants an explicit operator.
+
+```python
+ChromaBackend.role_filter("general")    # {"role": "general"}
+PineconeBackend.role_filter("general")  # {"role": {"$eq": "general"}}
+```
+
+Hardcoding either dialect would silently break the other store, so each backend
+owns its own — which is what keeps the role pre-filter correct regardless of
+which store is behind it.
+
+**Chroma is the default and the backend this project is developed against.** It
+is embedded, so the app runs from a clone with no external account, which is
+the main reason it is the default. Pinecone is there for when the index needs to
+outlive the process; its client libraries are optional:
+
+```bash
+pip install -r requirements-pinecone.txt
+```
+
+---
+
 ## Setup
 
 Requires Python 3.11+ and an OpenAI API key.
@@ -150,13 +184,43 @@ curl -u admin:admin123 -X POST http://localhost:8000/chat \
 | API | FastAPI, Uvicorn |
 | UI | Streamlit |
 | Orchestration | LangChain (LCEL), pinned to the 0.3 line |
-| Vector store | Chroma, `text-embedding-3-small` |
+| Vector store | Chroma (default) or Pinecone, behind one interface; `text-embedding-3-small` |
 | Analytics | DuckDB |
 | Auth store | SQLite, bcrypt |
 | Models | OpenAI `gpt-4o-mini` (routing, NL→SQL), `gpt-4o` (answers) |
 | Reranking | Cohere `rerank-english-v3.0` (optional) |
+| Tracing | LangSmith (optional, off by default) |
 
 Every dependency in `requirements.txt` is pinned.
+
+---
+
+## Observability
+
+LangSmith tracing is off by default and enabled by setting both:
+
+```bash
+LANGCHAIN_TRACING_V2=true
+LANGCHAIN_API_KEY=...
+```
+
+Each retrieval run is tagged with the role that scoped it, whether reranking was
+in the path, and which vector store served it, so traces can be filtered by
+department or configuration rather than arriving as an undifferentiated list.
+`GET /health` reports whether tracing is enabled, disabled, or requested without
+a key.
+
+---
+
+## Tests
+
+```bash
+pytest
+```
+
+26 tests covering backend selection, the two filter dialects, role scoping
+against a real Chroma instance, and credential handling. They use a
+deterministic stub embedder, so they need no API key.
 
 ---
 
@@ -165,6 +229,7 @@ Every dependency in `requirements.txt` is pinned.
 ```
 app/
   config.py              env-based settings, paths, credential checks
+  vectorstores.py        VectorStoreBackend interface: Chroma and Pinecone
   main.py                FastAPI app: auth, RBAC, routes
   ui.py                  Streamlit client
   rag_utils/
@@ -174,6 +239,7 @@ app/
     csv_query.py         NL→SQL, validation, DuckDB execution
 scripts/
   seed.py                bootstrap roles, admin user, sample documents
+tests/                   pytest suite, no API key required
 static/uploads/          sample documents, one directory per role
 ```
 
