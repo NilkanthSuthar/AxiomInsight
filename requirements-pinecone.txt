@@ -1,0 +1,5 @@
+# Optional: only needed for VECTOR_STORE=pinecone.
+# The default Chroma backend requires none of this.
+#   pip install -r requirements-pinecone.txt
+langchain-pinecone==0.2.13
+pinecone==7.3.0

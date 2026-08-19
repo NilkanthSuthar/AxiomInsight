@@ -5,16 +5,16 @@ from pathlib import Path
 
 import pandas as pd
 from langchain.retrievers import ContextualCompressionRetriever
-from langchain_chroma import Chroma
 from langchain_cohere import CohereRerank
 from langchain_core.documents import Document
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnableParallel, RunnablePassthrough
+from langchain_core.vectorstores import VectorStore
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
-from .. import config
+from .. import config, vectorstores
 
 # ==============================
 # Vector store (lazily created)
@@ -23,21 +23,25 @@ from .. import config
 # without an OpenAI key present. Without this, `import app.main` crashes on a
 # fresh clone before FastAPI ever starts.
 _vectorstore = None
+_backend = None
 
 
-def get_vectorstore() -> Chroma:
+def get_backend() -> vectorstores.VectorStoreBackend:
+    """The configured vector-store backend (chroma by default)."""
+    global _backend
+    if _backend is None:
+        _backend = vectorstores.get_backend()
+    return _backend
+
+
+def get_vectorstore() -> VectorStore:
     global _vectorstore
     if _vectorstore is None:
-        config.ensure_directories()
         embeddings = OpenAIEmbeddings(
             model=config.EMBEDDING_MODEL,
             api_key=config.require_openai_key(),
         )
-        _vectorstore = Chroma(
-            collection_name="my_collection",
-            persist_directory=str(config.CHROMA_PATH),
-            embedding_function=embeddings,
-        )
+        _vectorstore = get_backend().create(embeddings)
     return _vectorstore
 
 
@@ -152,21 +156,17 @@ def format_docs(docs):
 # Retrieval
 # ==============================
 def build_role_filter(user_role: str):
-    """Chroma metadata filter for the documents a role may read.
+    """Metadata filter for the documents a role may read.
 
-    Returned as a `where` clause that Chroma applies *inside* the vector search,
-    so restricted documents are never scored or returned. This is a pre-filter,
-    not a filtering of results after the fact.
+    Delegated to the active backend, which owns its own filter dialect. The
+    filter is passed into the store's query call, so restricted documents are
+    never scored or returned: it is a pre-filter, not a trimming of results
+    after the fact.
 
-    Admin is the only unrestricted role; every other role sees its own documents
-    plus anything tagged 'general'.
+    Admin is the only unrestricted role; every other role sees its own
+    documents plus anything tagged 'general'.
     """
-    user_role = user_role.lower()
-    if user_role == "admin":
-        return None
-    if user_role == "general":
-        return {"role": "general"}
-    return {"role": {"$in": [user_role, "general"]}}
+    return get_backend().role_filter(user_role)
 
 
 def wrap_with_reranker(retriever, cohere_api_key: str, top_n: int = None):

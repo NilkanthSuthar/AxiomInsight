@@ -22,6 +22,7 @@ load_dotenv(BASE_DIR / ".env")
 # crash at import time; see require_openai_key().
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY") or None
 COHERE_API_KEY = os.getenv("COHERE_API_KEY") or None
+PINECONE_API_KEY = os.getenv("PINECONE_API_KEY") or None
 LANGCHAIN_API_KEY = os.getenv("LANGCHAIN_API_KEY") or None
 
 # --- Storage locations -----------------------------------------------------
@@ -30,10 +31,20 @@ CHROMA_PATH = BASE_DIR / os.getenv("CHROMA_PATH", "chroma_db")
 DUCKDB_PATH = BASE_DIR / os.getenv("DUCKDB_PATH", "static/data/structured_queries.duckdb")
 UPLOAD_DIR = BASE_DIR / "static/uploads"
 
+# --- Vector store ----------------------------------------------------------
+# "chroma" (default, embedded) or "pinecone" (managed). See app/vectorstores.py.
+VECTOR_STORE = os.getenv("VECTOR_STORE", "chroma").lower()
+CHROMA_COLLECTION = os.getenv("CHROMA_COLLECTION", "my_collection")
+PINECONE_INDEX = os.getenv("PINECONE_INDEX", "axiom-insight")
+PINECONE_CLOUD = os.getenv("PINECONE_CLOUD", "aws")
+PINECONE_REGION = os.getenv("PINECONE_REGION", "us-east-1")
+
 # --- Models ----------------------------------------------------------------
 CLASSIFIER_MODEL = os.getenv("CLASSIFIER_MODEL", "gpt-4o-mini")
 ANSWER_MODEL = os.getenv("ANSWER_MODEL", "gpt-4o")
 EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "text-embedding-3-small")
+# Must match the vector index dimension. text-embedding-3-small is 1536.
+EMBEDDING_DIMENSIONS = int(os.getenv("EMBEDDING_DIMENSIONS", "1536"))
 
 # --- Retrieval -------------------------------------------------------------
 RETRIEVAL_K = int(os.getenv("RETRIEVAL_K", "3"))
