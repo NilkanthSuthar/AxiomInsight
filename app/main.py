@@ -114,6 +114,7 @@ def health():
         "openai_key_configured": bool(config.OPENAI_API_KEY),
         "cohere_reranking_enabled": bool(config.COHERE_API_KEY),
         "vector_store": config.VECTOR_STORE,
+        "langsmith_tracing": config.tracing_status(),
     }
 
 

@@ -205,6 +205,7 @@ def get_retriever(user_role: str, cohere_api_key: str = None):
 
 
 def get_rag_chain(user_role: str, cohere_api_key: str = None):
+    cohere_api_key = cohere_api_key or config.COHERE_API_KEY
     retriever = get_retriever(user_role, cohere_api_key)
 
     chain = (
@@ -215,6 +216,25 @@ def get_rag_chain(user_role: str, cohere_api_key: str = None):
         | chat_prompt
         | get_model()
         | StrOutputParser()
+    )
+
+    # Tag the run so traces are filterable by the things that actually vary
+    # between requests: which role scoped the retrieval, whether reranking was
+    # in the path, and which store served it. Without this a trace list is a
+    # wall of identical-looking runs.
+    chain = chain.with_config(
+        run_name="rag_answer",
+        tags=[
+            f"role:{user_role.lower()}",
+            f"store:{get_backend().name}",
+            "rerank:on" if cohere_api_key else "rerank:off",
+        ],
+        metadata={
+            "user_role": user_role.lower(),
+            "vector_store": get_backend().name,
+            "reranked": bool(cohere_api_key),
+            "retrieval_k": config.RETRIEVAL_K,
+        },
     )
 
     return chain | (lambda text: {"answer": text})

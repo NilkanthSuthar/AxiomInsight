@@ -66,6 +66,15 @@ else:
     os.environ["LANGCHAIN_TRACING_V2"] = "false"
 
 
+def tracing_status() -> str:
+    """Human-readable LangSmith tracing state, for /health."""
+    if LANGCHAIN_TRACING_V2 and LANGCHAIN_API_KEY:
+        return "enabled"
+    if LANGCHAIN_TRACING_V2:
+        return "requested but LANGCHAIN_API_KEY is missing"
+    return "disabled"
+
+
 class MissingCredentialError(RuntimeError):
     """Raised when an operation needs an API key that was never configured."""
 

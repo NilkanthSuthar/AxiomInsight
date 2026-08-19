@@ -77,3 +77,32 @@ def test_admin_is_unrestricted(store):
 def test_general_role_sees_only_general(store):
     roles = {d.metadata["role"] for d in retrieve_as(store, "General")}
     assert roles == {"general"}
+
+
+def test_chain_is_tagged_for_tracing(store, monkeypatch):
+    """Traces must be filterable by role, store and rerank state."""
+    from langchain_core.runnables import RunnableLambda
+
+    monkeypatch.setattr(rag_module.config, "COHERE_API_KEY", None)
+    with patch.object(rag_module, "get_vectorstore", return_value=store):
+        with patch.object(rag_module, "get_model", return_value=RunnableLambda(str)):
+            chain = rag_module.get_rag_chain("Finance")
+
+    config = chain.first.config
+    assert config["run_name"] == "rag_answer"
+    assert "role:finance" in config["tags"]
+    assert "store:chroma" in config["tags"]
+    assert "rerank:off" in config["tags"]
+    assert config["metadata"]["user_role"] == "finance"
+    assert config["metadata"]["reranked"] is False
+
+
+def test_rerank_tag_flips_when_cohere_configured(store):
+    from langchain_core.runnables import RunnableLambda
+
+    with patch.object(rag_module, "get_vectorstore", return_value=store):
+        with patch.object(rag_module, "get_model", return_value=RunnableLambda(str)):
+            chain = rag_module.get_rag_chain("HR", cohere_api_key="test-key")
+
+    assert "rerank:on" in chain.first.config["tags"]
+    assert chain.first.config["metadata"]["reranked"] is True
