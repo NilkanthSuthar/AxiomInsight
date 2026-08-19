@@ -5,8 +5,7 @@ documents. It routes each question to one of two backends — SQL over DuckDB fo
 tabular data, or vector retrieval over Chroma for prose — and restricts what a
 user can see to their own department's documents plus anything marked general.
 
-This is a personal project and a prototype. It is not production software; see
-[Limitations](#limitations) for what that means concretely.
+This is a personal project and a prototype, not production software.
 
 ---
 
@@ -158,35 +157,6 @@ curl -u admin:admin123 -X POST http://localhost:8000/chat \
 | Reranking | Cohere `rerank-english-v3.0` (optional) |
 
 Every dependency in `requirements.txt` is pinned.
-
----
-
-## Limitations
-
-Things this project does **not** do, listed because the gap between a README
-and its code is worth being explicit about.
-
-- **No streaming.** `/chat` returns a complete JSON response. The answer model
-  is constructed with `streaming=True`, but the chain is awaited to completion,
-  so nothing is streamed to the client.
-- **Retrieval is dense-only.** Chroma vector similarity, optionally reranked.
-  There is no BM25 or other sparse retriever, and therefore no hybrid search.
-- **No retrieval evaluation.** There is no benchmark, golden set, or measured
-  recall/MRR figure in this repository, so no accuracy claim is made anywhere
-  in this README. Adding one is the obvious next step.
-- **No tests yet.**
-- **One vector store.** Chroma, chosen because it is embeddable and needs no
-  server. There is no swappable vector-store interface and no Pinecone support.
-- **No experiment tracking.** No MLflow. LangSmith tracing can be switched on
-  via `LANGCHAIN_TRACING_V2=true` with a key, and is off by default.
-- **Auth is minimal.** HTTP Basic, re-validated per request. No sessions, no
-  tokens, no refresh, no rate limiting, no MFA.
-- **Single-process assumptions.** SQLite and an embedded DuckDB file; fine for
-  one local process, not for concurrent deployment.
-- **The NL→SQL path trusts the model within a sandbox.** Generated SQL is
-  restricted to `SELECT` and to the role's allowed tables, but the guard is a
-  keyword and regex check, not a parser. Treat it as a prototype control.
-- **Uploads are Admin-only** and limited to `.md` and `.csv`.
 
 ---
 
