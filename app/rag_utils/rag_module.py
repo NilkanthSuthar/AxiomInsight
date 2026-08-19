@@ -1,120 +1,122 @@
-# ========== CONFIG ==========
-from pathlib import Path
-import os
-import pandas as pd
-from collections import defaultdict
-from langchain_core.documents import Document
+"""Document indexing and the role-scoped retrieval chain."""
+
 import sqlite3
+from pathlib import Path
 
-
-from langchain_community.document_loaders import UnstructuredMarkdownLoader
-from langchain_text_splitters import RecursiveCharacterTextSplitter
+import pandas as pd
+from langchain.retrievers import ContextualCompressionRetriever
 from langchain_chroma import Chroma
-from langchain_openai import OpenAIEmbeddings
-from langchain_openai import ChatOpenAI
-from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.runnables import RunnablePassthrough, RunnableParallel
+from langchain_cohere import CohereRerank
+from langchain_core.documents import Document
 from langchain_core.output_parsers import StrOutputParser
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.runnables import RunnableParallel, RunnablePassthrough
+from langchain_openai import ChatOpenAI, OpenAIEmbeddings
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 
-from .secret_key import openapi_key,langchain_key,cohere_api_key
+from .. import config
+
+# ==============================
+# Vector store (lazily created)
+# ==============================
+# Built on first use rather than at import time, so the module can be imported
+# without an OpenAI key present. Without this, `import app.main` crashes on a
+# fresh clone before FastAPI ever starts.
+_vectorstore = None
 
 
-
-os.environ["LANGCHAIN_TRACING_V2"] = "true"
-os.environ["LANGCHAIN_ENDPOINT"] = "https://api.smith.langchain.com"
-os.environ["LANGCHAIN_PROJECT"] = "RAG"
-os.environ["LANGCHAIN_API_KEY"] = langchain_key
-os.environ["OPENAI_API_KEY"] = openapi_key
-os.environ["COHERE_API_KEY"] = cohere_api_key
+def get_vectorstore() -> Chroma:
+    global _vectorstore
+    if _vectorstore is None:
+        config.ensure_directories()
+        embeddings = OpenAIEmbeddings(
+            model=config.EMBEDDING_MODEL,
+            api_key=config.require_openai_key(),
+        )
+        _vectorstore = Chroma(
+            collection_name="my_collection",
+            persist_directory=str(config.CHROMA_PATH),
+            embedding_function=embeddings,
+        )
+    return _vectorstore
 
 
 # ==============================
-# ====Split,load,embed==========
+# Indexing
 # ==============================
-
-openai_embeddings = OpenAIEmbeddings(model="text-embedding-3-small")
-vectorstore = Chroma(
-    collection_name="my_collection",
-    persist_directory="chroma_db",
-    embedding_function=openai_embeddings
-)
-
-
 def embed_documents_to_vectorstore(docs):
-    text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
-    splits = text_splitter.split_documents(docs)
-    vectorstore.add_documents(splits)
-    
-    print("Documents embedded and saved to vectorstore.")
-    print("Total documents:", len(vectorstore.get()["documents"]))
-    #print("Chunks being added:")
-    #for chunk in splits:
-    #    print(f"---\n{chunk.page_content[:150]}...\nMetadata: {chunk.metadata}")
-
-
+    splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
+    splits = splitter.split_documents(docs)
+    get_vectorstore().add_documents(splits)
+    print(f"Embedded {len(splits)} chunks into the vector store.")
 
 
 def load_file(filepath, role):
+    """Read one file into LangChain Documents tagged with the owning role."""
     ext = Path(filepath).suffix.lower()
     try:
         if ext == ".csv":
-            df1 = pd.read_csv(filepath)
-            documents = []
-            for row in df1.to_dict(orient="records"):
-                content = "\n".join(f"{k}: {v}" for k, v in row.items())
-                documents.append(
-                    Document(
-                        page_content=content,
-                        metadata={"role": role.lower(), "source": Path(filepath).name}
-                    )
+            frame = pd.read_csv(filepath)
+            return [
+                Document(
+                    page_content="\n".join(f"{k}: {v}" for k, v in row.items()),
+                    metadata={"role": role.lower(), "source": Path(filepath).name},
                 )
-            return documents  # Return a list of documents
+                for row in frame.to_dict(orient="records")
+            ]
 
-        elif ext == ".md":
-            with open(filepath, "r", encoding="utf-8") as f:
-                content = f.read()
+        if ext == ".md":
+            with open(filepath, "r", encoding="utf-8") as handle:
+                content = handle.read()
             return [
                 Document(
                     page_content=content,
-                    metadata={"role": role.lower(), "source": Path(filepath).name}
+                    metadata={"role": role.lower(), "source": Path(filepath).name},
                 )
             ]
-        else:
-            return None
 
-    except Exception as e:
-        print(f"Failed to process {filepath}: {e}")
+        return None
+
+    except Exception as exc:
+        print(f"Failed to process {filepath}: {exc}")
         return None
 
 
 def run_indexer():
-    conn = sqlite3.connect("roles_docs.db")
-    c = conn.cursor()
-    c.execute("SELECT id, filepath, role FROM documents WHERE embedded = 0")
-    
-    all_docs = []
+    """Embed every document row not yet marked as embedded.
 
-    for doc_id, path, role in c.fetchall():
-        docs = load_file(path, role)
-        if docs:
-            if isinstance(docs, list):
+    Rows are only marked embedded once the embedding call has succeeded, so a
+    failure part-way leaves the work to be retried rather than silently skipped.
+    """
+    conn = sqlite3.connect(config.SQLITE_PATH)
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT id, filepath, role FROM documents WHERE embedded = 0")
+
+        all_docs, indexed_ids = [], []
+        for doc_id, path, role in cursor.fetchall():
+            docs = load_file(path, role)
+            if docs:
                 all_docs.extend(docs)
-            else:
-                all_docs.append(docs)
+                indexed_ids.append(doc_id)
 
-            # Mark this file as embedded
-            c.execute("UPDATE documents SET embedded = 1 WHERE id = ?", (doc_id,))
+        if all_docs:
+            embed_documents_to_vectorstore(all_docs)
+            cursor.executemany(
+                "UPDATE documents SET embedded = 1 WHERE id = ?",
+                [(i,) for i in indexed_ids],
+            )
+            conn.commit()
+    finally:
+        # Without this, an embedding failure left an open write transaction
+        # holding a lock on the SQLite file.
+        conn.close()
 
-    if all_docs:
-        embed_documents_to_vectorstore(all_docs)
-        conn.commit()
-
-    conn.close()
-    print(f"Indexed {len(all_docs)} document chunks.")
+    print(f"Indexed {len(all_docs)} documents.")
 
 
 # ==============================
-# ========== PROMPT TEMPLATE ==========
+# Prompt and model
 # ==============================
 system_prompt = (
     "You are an assistant for summarizing and answering queries from internal company documents.\n"
@@ -128,107 +130,91 @@ system_prompt = (
     "\n{context}"
 )
 
-chat_prompt = ChatPromptTemplate.from_messages([
-    ("system", system_prompt),
-    ("human", "{input}"),
-])
-
-# ==============================
-# ========== MODEL ==========
-# ==============================
-model = ChatOpenAI(
-    model="gpt-4o",  
-    temperature=0.2,
-    streaming=True  # Enable streaming for faster perceived response
+chat_prompt = ChatPromptTemplate.from_messages(
+    [("system", system_prompt), ("human", "{input}")]
 )
 
-# Helper function to format documents
+
+def get_model() -> ChatOpenAI:
+    return ChatOpenAI(
+        model=config.ANSWER_MODEL,
+        temperature=0.2,
+        streaming=True,
+        api_key=config.require_openai_key(),
+    )
+
+
 def format_docs(docs):
     return "\n\n".join(doc.page_content for doc in docs)
 
+
 # ==============================
-# Add a Reranker
+# Retrieval
 # ==============================
-def wrap_with_reranker(retriever, cohere_api_key, top_n=4):
-    #print("[INFO] Using Cohere reranker.")
-    reranker = CohereRerank(cohere_api_key=cohere_api_key, top_n=top_n)
+def build_role_filter(user_role: str):
+    """Chroma metadata filter for the documents a role may read.
+
+    Returned as a `where` clause that Chroma applies *inside* the vector search,
+    so restricted documents are never scored or returned. This is a pre-filter,
+    not a filtering of results after the fact.
+
+    Admin is the only unrestricted role; every other role sees its own documents
+    plus anything tagged 'general'.
+    """
+    user_role = user_role.lower()
+    if user_role == "admin":
+        return None
+    if user_role == "general":
+        return {"role": "general"}
+    return {"role": {"$in": [user_role, "general"]}}
+
+
+def wrap_with_reranker(retriever, cohere_api_key: str, top_n: int = None):
+    """Wrap a retriever so Cohere reorders candidates by relevance."""
+    reranker = CohereRerank(
+        model="rerank-english-v3.0",
+        cohere_api_key=cohere_api_key,
+        top_n=top_n or config.RETRIEVAL_K,
+    )
     return ContextualCompressionRetriever(
-        base_compressor=reranker,
-        base_retriever=retriever
+        base_compressor=reranker, base_retriever=retriever
     )
 
-def get_rag_chain(user_role: str,cohere_api_key: str = None):
-    user_role = user_role.lower()
 
-    if user_role == "admin":
-        # Admin sees everything
-        retriever = vectorstore.as_retriever(
-            search_kwargs={"k": 3},
-            search_type="similarity"  # Faster than MMR
-        )
+def get_retriever(user_role: str, cohere_api_key: str = None):
+    """Role-scoped retriever, reranked when a Cohere key is configured."""
+    cohere_api_key = cohere_api_key or config.COHERE_API_KEY
+    role_filter = build_role_filter(user_role)
 
-    elif user_role == "general":
-        # General role sees only general documents
-        retriever = vectorstore.as_retriever(
-            search_kwargs={
-                "k": 3,
-                "filter": {"role": "general"}
-            },
-            search_type="similarity"
-        )
+    # Pull a wider candidate set when reranking, so the reranker has something
+    # to choose between; otherwise fetch exactly what we intend to use.
+    k = config.RERANK_CANDIDATES if cohere_api_key else config.RETRIEVAL_K
 
-    else:
-        # All other roles see their docs + general
-        retriever = vectorstore.as_retriever(
-            search_kwargs={
-                "k": 3,
-                "filter": {
-                    "role": {"$in": [user_role, "general"]}
-                }
-            },
-            search_type="similarity"
-        )
+    search_kwargs = {"k": k}
+    if role_filter is not None:
+        search_kwargs["filter"] = role_filter
 
-    # wrap with reranker
+    retriever = get_vectorstore().as_retriever(
+        search_kwargs=search_kwargs, search_type="similarity"
+    )
+
     if cohere_api_key:
-        print("Using cohere reranker")
         retriever = wrap_with_reranker(retriever, cohere_api_key)
 
-    # Use LCEL to create the chain
-    rag_chain = (
+    return retriever
+
+
+def get_rag_chain(user_role: str, cohere_api_key: str = None):
+    retriever = get_retriever(user_role, cohere_api_key)
+
+    chain = (
         RunnableParallel(
             context=retriever | format_docs,
-            input=RunnablePassthrough()
+            input=RunnablePassthrough(),
         )
         | chat_prompt
-        | model
+        | get_model()
         | StrOutputParser()
     )
-    
-    # Wrap to match expected output format {"answer": "..."}
-    def format_output(text):
-        return {"answer": text}
-    
-    return rag_chain | format_output
 
-
-"""
-# ========== MAIN EXECUTION ==========
-if __name__ == "__main__":
-    run_indexer() 
-"""
-    # ========== EXAMPLE USAGE ==========
-"""
-    user_role = "hr" 
-    rag_chain = get_rag_chain(user_role)
-
-    
-    query = "give me Campaign Highlights from marketing summary."
-    response = rag_chain.invoke({"input": query})
-
-    print((response["answer"]))
-    for doc in response.get("context", []):
-        print(f"Source: {doc.metadata['source']}, Role: {doc.metadata.get('role')}")
-
-"""
-
+    return chain | (lambda text: {"answer": text})

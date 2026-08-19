@@ -1,292 +1,294 @@
+import re
 import sqlite3
-import pandas as pd
-import os
+from io import BytesIO
 from pathlib import Path
-from pydantic import BaseModel
-import duckdb
 
-from fastapi import FastAPI, UploadFile,File, Form, HTTPException, Depends
-from fastapi import BackgroundTasks
-from fastapi.security import HTTPBasic, HTTPBasicCredentials
-from fastapi.responses import JSONResponse
-from langchain_community.embeddings.openai import OpenAIEmbeddings
-from dotenv import load_dotenv
 import bcrypt
-from langchain_core.documents import Document
+import pandas as pd
+from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi.responses import JSONResponse
+from fastapi.security import HTTPBasic, HTTPBasicCredentials
+from pydantic import BaseModel
 
-from .rag_utils.rag_module import run_indexer,vectorstore,get_rag_chain
+from . import config
+from .rag_utils.csv_query import get_duck_conn
 from .rag_utils.query_classifier import detect_query_type_llm
-from .rag_utils.csv_query import ask_csv
 from .rag_utils.rag_chain import ask_rag
+from .rag_utils.rag_module import run_indexer
 
-app = FastAPI()
+app = FastAPI(title="AxiomInsight")
 security = HTTPBasic()
-load_dotenv()
 
-# -------------------------
-# === DUCKDB SETUP ===
-# -------------------------
-# Set path to DuckDB database file
-DUCKDB_DIR = Path("static/data")
-DUCKDB_DIR.mkdir(parents=True, exist_ok=True)  # ensure directory exists
+config.ensure_directories()
 
-DUCKDB_PATH = DUCKDB_DIR/"structured_queries.duckdb"
 
-# Connect to DuckDB file (creates file if not exists)
-duck_conn = duckdb.connect(str(DUCKDB_PATH))
-
-duck_conn.execute("""
-    CREATE TABLE IF NOT EXISTS tables_metadata (
-        table_name TEXT,
-        role TEXT
-    )
-""")
+@app.exception_handler(config.MissingCredentialError)
+async def missing_credential_handler(request: Request, exc: config.MissingCredentialError):
+    """Answer with an actionable message instead of a 500 stack trace."""
+    return JSONResponse(status_code=503, content={"detail": str(exc)})
 
 
 # -------------------------
 # === SQLITE DATABASE SETUP ===
 # -------------------------
+def get_db():
+    """One SQLite connection per call.
 
-conn = sqlite3.connect("roles_docs.db", check_same_thread=False)
-c = conn.cursor()
-c.executescript("""
-CREATE TABLE IF NOT EXISTS users (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    username TEXT UNIQUE,
-    password TEXT,
-    role TEXT
-);
-
-CREATE TABLE IF NOT EXISTS roles (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    role_name TEXT UNIQUE
-);
-
-CREATE TABLE IF NOT EXISTS documents (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    filename TEXT,
-    role TEXT,
-    filepath TEXT NOT NULL,
-    headers_str TEXT,
-    embedded INTEGER DEFAULT 0
-);
-""")
-conn.commit()
-
-def create_default_user():
-    conn_local = sqlite3.connect("roles_docs.db")
-    c_local = conn_local.cursor()
-
-    c_local.execute("INSERT OR IGNORE INTO roles (role_name) VALUES (?)", ("Admin",))
-    hashed_pw = bcrypt.hashpw("admin123".encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
-    try:
-        c_local.execute("INSERT INTO users (username, password, role) VALUES (?, ?, ?)", ("admin", hashed_pw, "Admin"))
-        conn_local.commit()
-        print("✅ Default Admin user created.")
-    except sqlite3.IntegrityError:
-        print("⚠️ User already exists.")
-    conn_local.close()
+    A single module-level connection with check_same_thread=False was
+    previously shared across all request threads.
+    """
+    conn = sqlite3.connect(config.SQLITE_PATH)
+    conn.execute("PRAGMA foreign_keys = ON")
+    return conn
 
 
-# Call it on startup
-create_default_user()
+def init_db():
+    conn = get_db()
+    conn.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT UNIQUE,
+            password TEXT,
+            role TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS roles (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            role_name TEXT UNIQUE
+        );
+
+        CREATE TABLE IF NOT EXISTS documents (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            filename TEXT,
+            role TEXT,
+            filepath TEXT NOT NULL,
+            headers_str TEXT,
+            embedded INTEGER DEFAULT 0
+        );
+        """
+    )
+    conn.commit()
+    conn.close()
+
+
+init_db()
+
 
 # -------------------------
 # === AUTHENTICATION ===
 # -------------------------
 def authenticate(credentials: HTTPBasicCredentials = Depends(security)):
-    username = credentials.username
-    password = credentials.password
-    print("username: ", username)
-    print("password: ", password)
-    c.execute("SELECT password, role FROM users WHERE username = ?", (username,))
-    row = c.fetchone()
-    print("DB row:", row)
-    if not row or not bcrypt.checkpw(password.encode('utf-8'), row[0].encode('utf-8')):
+    conn = get_db()
+    row = conn.execute(
+        "SELECT password, role FROM users WHERE username = ?", (credentials.username,)
+    ).fetchone()
+    conn.close()
+
+    if not row or not bcrypt.checkpw(
+        credentials.password.encode("utf-8"), row[0].encode("utf-8")
+    ):
         raise HTTPException(status_code=401, detail="Invalid credentials")
-    return {"username": username, "role": row[1]}
+    return {"username": credentials.username, "role": row[1]}
+
+
+def require_admin(user=Depends(authenticate)):
+    if user["role"] != "Admin":
+        raise HTTPException(status_code=403, detail="Admin role required.")
+    return user
+
 
 # === MODELS ===
 class ChatRequest(BaseModel):
     question: str
 
+
 # -------------------------
 # === ROUTES ===
 # -------------------------
+@app.get("/health")
+def health():
+    """Readiness, including whether the app is actually usable."""
+    return {
+        "status": "ok",
+        "openai_key_configured": bool(config.OPENAI_API_KEY),
+        "cohere_reranking_enabled": bool(config.COHERE_API_KEY),
+    }
+
+
 @app.get("/login")
 def login(user=Depends(authenticate)):
     return {"message": f"Welcome {user['username']}!", "role": user["role"]}
 
+
 @app.get("/roles")
 def get_roles(user=Depends(authenticate)):
-    c.execute("SELECT role_name FROM roles")
-    roles = [r[0] for r in c.fetchall()]
+    conn = get_db()
+    roles = [r[0] for r in conn.execute("SELECT role_name FROM roles").fetchall()]
+    conn.close()
     return {"roles": roles}
+
 
 @app.post("/create-user")
 def create_user(
     username: str = Form(...),
     password: str = Form(...),
     role: str = Form(...),
-    user=Depends(authenticate)
+    user=Depends(require_admin),
 ):
-    if user["role"] != "Admin":
-        raise HTTPException(status_code=403, detail="Only Admin can create users.")
-
-    c.execute("SELECT 1 FROM roles WHERE role_name = ?", (role,))
-    if not c.fetchone():
+    conn = get_db()
+    if not conn.execute("SELECT 1 FROM roles WHERE role_name = ?", (role,)).fetchone():
+        conn.close()
         raise HTTPException(status_code=400, detail="Invalid role")
 
-    hashed = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+    hashed = bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
     try:
-        c.execute("INSERT INTO users (username, password, role) VALUES (?, ?, ?)", (username, hashed, role))
+        conn.execute(
+            "INSERT INTO users (username, password, role) VALUES (?, ?, ?)",
+            (username, hashed, role),
+        )
         conn.commit()
         return {"message": f"User '{username}' added with role '{role}'"}
     except sqlite3.IntegrityError:
         raise HTTPException(status_code=400, detail="User already exists")
+    finally:
+        conn.close()
+
 
 @app.post("/create-role")
-def create_role(role_name: str = Form(...), user=Depends(authenticate)):
-    if user["role"] != "Admin":
-        raise HTTPException(status_code=403, detail="Only Admin can create roles.")
-
+def create_role(role_name: str = Form(...), user=Depends(require_admin)):
+    conn = get_db()
     try:
-        c.execute("INSERT INTO roles (role_name) VALUES (?)", (role_name,))
+        conn.execute("INSERT INTO roles (role_name) VALUES (?)", (role_name,))
         conn.commit()
         return {"message": f"Role '{role_name}' created"}
     except sqlite3.IntegrityError:
         raise HTTPException(status_code=400, detail="Role already exists")
+    finally:
+        conn.close()
 
 
+def safe_table_name(filename: str) -> str:
+    """Derive a SQL identifier from a filename, rejecting anything unexpected.
 
-UPLOAD_DIR = "static/uploads"
+    The table name reaches DuckDB as an identifier and cannot be parameterised,
+    so it is whitelisted rather than interpolated as-is.
+    """
+    stem = Path(filename).stem.replace("-", "_").replace(" ", "_")
+    if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", stem):
+        raise HTTPException(
+            status_code=400,
+            detail="Filename must start with a letter and contain only letters, "
+            "digits, underscores or hyphens.",
+        )
+    return stem
+
 
 @app.post("/upload-docs")
-async def upload_docs(file: UploadFile = File(...), role: str = Form(...)):
+async def upload_docs(
+    file: UploadFile = File(...),
+    role: str = Form(...),
+    user=Depends(require_admin),
+):
+    """Store a document, register it, and index it.
+
+    This endpoint previously had no authentication dependency at all, so any
+    caller could upload a document and assign it to any role.
+    """
+    filename = Path(file.filename).name
+    extension = Path(filename).suffix.lower()
+    if extension not in (".csv", ".md"):
+        raise HTTPException(status_code=400, detail="Only .csv and .md files are supported.")
+
+    conn = get_db()
+    if not conn.execute("SELECT 1 FROM roles WHERE role_name = ?", (role,)).fetchone():
+        conn.close()
+        raise HTTPException(status_code=400, detail=f"Unknown role: {role}")
+    conn.close()
+
     try:
-        filename = file.filename
-        extension = Path(filename).suffix.lower()
+        role_dir = config.UPLOAD_DIR / role
+        role_dir.mkdir(parents=True, exist_ok=True)
+        filepath = role_dir / filename
 
-        # Prepare storage
-        role_dir = os.path.join(UPLOAD_DIR, role)
-        os.makedirs(role_dir, exist_ok=True)
-        filepath = os.path.join(role_dir, filename)
+        data = await file.read()
+        filepath.write_bytes(data)
 
-        # Read content + save file
-        data = await file.read()  # Read once
-
-        with open(filepath, "wb") as f:
-            f.write(data)  # Save file for future indexing
-
-        # Convert to string content for validation (optional)
+        headers_str = None
         if extension == ".csv":
-            from io import BytesIO
-            df = pd.read_csv(BytesIO(data))
-            content = df.to_string(index=False)
+            frame = pd.read_csv(BytesIO(data))
+            headers_str = ",".join(frame.columns.tolist())
+            table_name = safe_table_name(filename)
 
-             # Load for DuckDB
-            df1 = pd.read_csv(filepath)
-            table_name = Path(filepath).stem.replace("-", "_")
-
-            # Save metadata including headers
-            headers = df1.columns.tolist()
-            headers_str = ",".join(headers)
-
-            duck_conn.execute(f"CREATE OR REPLACE TABLE {table_name} AS SELECT * FROM df1")
-
-            # ✅ Save metadata to DuckDB tables_metadata
-            duck_conn.execute(
+            duck = get_duck_conn()
+            duck.register("incoming_csv", frame)
+            duck.execute(f'CREATE OR REPLACE TABLE "{table_name}" AS SELECT * FROM incoming_csv')
+            duck.unregister("incoming_csv")
+            duck.execute("DELETE FROM tables_metadata WHERE table_name = ?", (table_name,))
+            duck.execute(
                 "INSERT INTO tables_metadata (table_name, role) VALUES (?, ?)",
-                (table_name, role)
+                (table_name, role),
             )
 
-        elif extension == ".md":
-            content = data.decode("utf-8")
-            headers_str = None  # explicitly set to None
-            
-        else:
-            raise HTTPException(status_code=400, detail="Unsupported file type")
-
-        # Save metadata to DB
-        conn = sqlite3.connect("roles_docs.db")
-        c = conn.cursor()
-        c.execute("INSERT INTO documents (filename, role, filepath,headers_str,embedded) VALUES (?, ?, ?,?,?)",
-                  (filename, role, filepath, headers_str,0))
-        #doc_id = c.lastrowid  # ✅ Get inserted doc ID
+        conn = get_db()
+        conn.execute(
+            "INSERT INTO documents (filename, role, filepath, headers_str, embedded) "
+            "VALUES (?, ?, ?, ?, 0)",
+            (filename, role, str(filepath), headers_str),
+        )
         conn.commit()
         conn.close()
-        
-        run_indexer()
-        print("Files indexed successfully")
-        return JSONResponse(content={"message": f"{filename} uploaded successfully for role '{role}'."})
 
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Upload failed: {e}")
-    
-   
-"""
+        # The file is stored and registered regardless; only the embedding step
+        # needs an API key, so a missing key degrades rather than losing the upload.
+        try:
+            run_indexer()
+            indexed = True
+            note = ""
+        except config.MissingCredentialError as exc:
+            indexed = False
+            note = f" Not indexed yet: {exc.args[0].splitlines()[0]}"
+
+        return JSONResponse(
+            content={
+                "message": f"{filename} uploaded successfully for role '{role}'.{note}",
+                "indexed": indexed,
+            }
+        )
+
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Upload failed: {exc}")
+
+
 @app.post("/chat")
 async def chat(req: ChatRequest, user=Depends(authenticate)):
+    """Route the question to SQL or document retrieval, then answer it.
+
+    The role is taken from the authenticated user, never from the request body.
+    """
     role = user["role"]
-    username = user["username"]
-    question = req.question
-
-    # 1. Detect mode: SQL or RAG
-    mode = detect_query_type_llm(question)
-    print(mode)
-
-    
-    # 2. Route to appropriate handler
-    if mode == "SQL":
-        result = await ask_csv(question, role, username, return_sql=True)
-        #result = await ask_csv(question) 
-    else:
-    
-        result = await ask_rag(question, role)  # pass role to enforce role-based doc access
-
-    return {
-        "user": username,
-        "role": role,
-        "mode": mode,
-        "answer": result["answer"],
-        **({"sql": result["sql"]} if "sql" in result else {})
-    }
-"""
-@app.post("/chat")
-async def chat(req: ChatRequest, user=Depends(authenticate)):
-    role = user["role"]
-    username = user["username"]
-    question = req.question
-
-    # 1. Detect mode: SQL or RAG
-    mode = detect_query_type_llm(question)
-    print(f"Detected mode: {mode}")
-
-    result = {}
+    mode = detect_query_type_llm(req.question)
     fallback_used = False
 
-    # 2. Route to appropriate handler
     if mode == "SQL":
-        try:
-            result = await ask_csv(question, role, username, return_sql=True)
+        from .rag_utils.csv_query import ask_csv
 
-            if result.get("error") or not result.get("answer", "").strip():
-                raise ValueError("SQL query blocked or failed")
-
-        except Exception as e:
-            print(f"[SQL Fallback Triggered] Error: {e}")
-            result = await ask_rag(question, role)
+        result = await ask_csv(req.question, role, user["username"], return_sql=True)
+        if result.get("error") or not result.get("answer", "").strip():
+            # SQL could not answer it; documents are the better bet.
+            result = await ask_rag(req.question, role)
             fallback_used = True
-            mode = "SQL → fallback to RAG"
-
+            mode = "SQL -> fallback to RAG"
     else:
-        result = await ask_rag(question, role)
+        result = await ask_rag(req.question, role)
 
     return {
-        "user": username,
+        "user": user["username"],
         "role": role,
         "mode": mode,
         "fallback": fallback_used,
         "answer": result["answer"],
-        **({"sql": result["sql"]} if "sql" in result else {})
+        **({"sql": result["sql"]} if "sql" in result else {}),
     }
