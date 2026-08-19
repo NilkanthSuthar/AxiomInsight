@@ -89,14 +89,24 @@ class PineconeBackend(VectorStoreBackend):
     name = "pinecone"
 
     def create(self, embeddings: Embeddings) -> VectorStore:
-        from langchain_pinecone import PineconeVectorStore
-        from pinecone import Pinecone, ServerlessSpec
-
+        # Check configuration before importing: a user who has set neither the
+        # key nor installed the optional libraries should be told about the
+        # key, not shown an ImportError for a package they never asked for.
         if not config.PINECONE_API_KEY:
             raise config.MissingCredentialError(
                 "VECTOR_STORE=pinecone but PINECONE_API_KEY is not set.\n"
                 "Set it in .env, or switch back with VECTOR_STORE=chroma."
             )
+
+        try:
+            from langchain_pinecone import PineconeVectorStore
+            from pinecone import Pinecone, ServerlessSpec
+        except ImportError as exc:
+            raise ImportError(
+                "The Pinecone backend needs its optional client libraries:\n"
+                "    pip install -r requirements-pinecone.txt\n"
+                "Or switch back with VECTOR_STORE=chroma."
+            ) from exc
 
         client = Pinecone(api_key=config.PINECONE_API_KEY)
         existing = {i["name"] for i in client.list_indexes()}

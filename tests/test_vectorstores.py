@@ -56,3 +56,22 @@ def test_pinecone_backend_requires_a_key(monkeypatch):
     monkeypatch.setattr(config, "PINECONE_API_KEY", None)
     with pytest.raises(config.MissingCredentialError, match="PINECONE_API_KEY"):
         vectorstores.get_backend("pinecone").create(embeddings=None)
+
+
+def test_pinecone_missing_libraries_gives_install_instructions(monkeypatch):
+    """A missing optional dependency must name the fix, not just the module."""
+    import builtins
+
+    from app import config
+
+    monkeypatch.setattr(config, "PINECONE_API_KEY", "fake-key")
+    real_import = builtins.__import__
+
+    def blocked(name, *args, **kwargs):
+        if name.startswith(("pinecone", "langchain_pinecone")):
+            raise ImportError(f"No module named {name!r}")
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", blocked)
+    with pytest.raises(ImportError, match="requirements-pinecone.txt"):
+        vectorstores.get_backend("pinecone").create(embeddings=None)
